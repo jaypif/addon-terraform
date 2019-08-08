@@ -136,8 +136,6 @@ func changeTemplateGroup(d *schema.ResourceData, meta interface{}) error {
 		if err != nil {
 			return err
 		}
-	} else {
-		gid = d.Get("gid").(int)
 	}
 
 	err = tc.Chown(-1, gid)
@@ -165,7 +163,12 @@ func resourceOpennebulaTemplateCreate(d *schema.ResourceData, meta interface{}) 
 	tc := controller.Template(templateID)
 
 	// add template information into Template
-	err = tc.Update(d.Get("template").(string), 1)
+	if d.Get("template").(string) != "" {
+		err = tc.Update(d.Get("template").(string), 0)
+		if err != nil {
+			return err
+		}
+	}
 
 	d.SetId(fmt.Sprintf("%v", templateID))
 
@@ -271,7 +274,7 @@ func resourceOpennebulaTemplateUpdate(d *schema.ResourceData, meta interface{}) 
 		log.Printf("[INFO] Successfully updated Template %s\n", template.Name)
 	}
 
-	if d.HasChange("group") || d.HasChange("gid") {
+	if d.HasChange("group") {
 		err = changeTemplateGroup(d, meta)
 		if err != nil {
 			return err
