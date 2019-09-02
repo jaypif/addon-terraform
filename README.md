@@ -6,10 +6,18 @@
 
 ## Development
 
+### Contributions
+
 Bug reports and pull requests are welcome on GitHub at
 https://github.com/OpenNebula/addon-terraform/issues.
 
-Please follow [How to Contribute](https://github.com/OpenNebula/one/wiki/How-to-participate-in-Add_on-Development) rules for any pull request.
+Please follow [How to Contribute](https://github.com/OpenNebula/one/wiki/How-to-participate-in-Add_on-Development) rules for any 
+pull request.
+
+### Continuous Integration
+
+Travis CI is use on any commit pushed to this repository.
+More information about Travis CI: https://travis-ci.com
 
 ## Authors
 
