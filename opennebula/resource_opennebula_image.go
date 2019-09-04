@@ -282,15 +282,15 @@ func resourceOpennebulaImageCreate(d *schema.ResourceData, meta interface{}) err
 		return xmlerr
 	}
 
-	// add template information into image
-	err = ic.Update(template, 1)
-
 	d.SetId(fmt.Sprintf("%v", imageID))
 
 	_, err = waitForImageState(d, meta, "ready")
 	if err != nil {
 		return fmt.Errorf("Error waiting for Image (%s) to be in state READY: %s", d.Id(), err)
 	}
+
+	// add template information into image
+	err = ic.Update(template, 0)
 
 	ic, err = getImageController(d, meta)
 	if err != nil {
@@ -372,13 +372,11 @@ func waitForImageState(d *schema.ResourceData, meta interface{}, state string) (
 		Target:  []string{state},
 		Refresh: func() (interface{}, string, error) {
 			log.Println("Refreshing Image state...")
-			if d.Id() != "" {
-				// Get Image Info
-				ic, err = getImageController(d, meta)
-				if err != nil {
-					log.Printf("Image %v was not found", d.Id())
-					return image, "notfound", nil
-				}
+			// Get Image Info
+			ic, err = getImageController(d, meta)
+			if err != nil {
+				log.Printf("Image %v was not found", d.Id())
+				return image, "notfound", nil
 			}
 			image, err = ic.Info()
 			if err != nil {
@@ -546,7 +544,7 @@ func resourceOpennebulaImageUpdate(d *schema.ResourceData, meta interface{}) err
 	}
 
 	if d.HasChange("type") {
-		if imagetype, ok := d.GetOk("permissions"); ok {
+		if imagetype, ok := d.GetOk("type"); ok {
 			err = ic.Chtype(imagetype.(string))
 			if err != nil {
 				return err
