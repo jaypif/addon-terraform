@@ -14,7 +14,7 @@ func TestAccSecurityGroup(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
-		CheckDestroy: testAccCheckSecurityGroupDestroy,
+		CheckDestroy: testAccCheckDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccSecurityGroupConfigBasic,
@@ -46,22 +46,6 @@ func TestAccSecurityGroup(t *testing.T) {
 			},
 		},
 	})
-}
-
-func testAccCheckSecurityGroupDestroy(s *terraform.State) error {
-	controller := testAccProvider.Meta().(*goca.Controller)
-
-	for _, rs := range s.RootModule().Resources {
-		sgID, _ := strconv.ParseUint(rs.Primary.ID, 10, 64)
-		sgc := controller.SecurityGroup(int(sgID))
-		// Get Security Group Info
-		sg, _ := sgc.Info()
-		if sg != nil {
-			return fmt.Errorf("Expected security group %s to have been destroyed", rs.Primary.ID)
-		}
-	}
-
-	return nil
 }
 
 func testAccSecurityGroupRule(ruleidx int, key, value string) resource.TestCheckFunc {

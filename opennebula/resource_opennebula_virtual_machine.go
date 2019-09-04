@@ -135,10 +135,10 @@ func resourceOpennebulaVirtualMachine() *schema.Resource {
 				Description: "Final name of the VM instance",
 			},
 			"template_id": {
-				Type:          schema.TypeInt,
-				Optional:      true,
-				ForceNew:      true,
-				Description:   "Id of the VM template to use",
+				Type:        schema.TypeInt,
+				Optional:    true,
+				ForceNew:    true,
+				Description: "Id of the VM template to use",
 			},
 			"pending": {
 				Type:        schema.TypeBool,
@@ -203,9 +203,9 @@ func resourceOpennebulaVirtualMachine() *schema.Resource {
 				Description: "Current LCM state of the VM",
 			},
 			"cpu": {
-				Type:          schema.TypeFloat,
-				Optional:      true,
-				Description:   "Amount of CPU quota assigned to the virtual machine",
+				Type:        schema.TypeFloat,
+				Optional:    true,
+				Description: "Amount of CPU quota assigned to the virtual machine",
 			},
 			"vcpu": {
 				Type:        schema.TypeInt,
@@ -213,9 +213,9 @@ func resourceOpennebulaVirtualMachine() *schema.Resource {
 				Description: "Number of virtual CPUs assigned to the virtual machine",
 			},
 			"memory": {
-				Type:          schema.TypeInt,
-				Optional:      true,
-				Description:   "Amount of memory (RAM) in MB assigned to the virtual machine",
+				Type:        schema.TypeInt,
+				Optional:    true,
+				Description: "Amount of memory (RAM) in MB assigned to the virtual machine",
 			},
 			"context": {
 				Type:        schema.TypeMap,

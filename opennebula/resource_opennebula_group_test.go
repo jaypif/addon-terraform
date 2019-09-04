@@ -1,20 +1,15 @@
 package opennebula
 
 import (
-	"fmt"
 	"github.com/hashicorp/terraform/helper/resource"
-	"github.com/hashicorp/terraform/terraform"
-	"strconv"
 	"testing"
-
-	"github.com/OpenNebula/one/src/oca/go/src/goca"
 )
 
 func TestAccGroup(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
-		CheckDestroy: testAccCheckGroupDestroy,
+		CheckDestroy: testAccCheckDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccGroupConfigBasic,
@@ -32,22 +27,6 @@ func TestAccGroup(t *testing.T) {
 			},
 		},
 	})
-}
-
-func testAccCheckGroupDestroy(s *terraform.State) error {
-	controller := testAccProvider.Meta().(*goca.Controller)
-
-	for _, rs := range s.RootModule().Resources {
-		groupID, _ := strconv.ParseUint(rs.Primary.ID, 10, 64)
-		gc := controller.Group(int(groupID))
-		// Get Group Info
-		group, _ := gc.Info()
-		if group != nil {
-			return fmt.Errorf("Expected group %s to have been destroyed", rs.Primary.ID)
-		}
-	}
-
-	return nil
 }
 
 var testAccGroupConfigBasic = `

@@ -17,7 +17,7 @@ func TestAccVirtualNetwork(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
-		CheckDestroy: testAccCheckVirtualNetworkDestroy,
+		CheckDestroy: testAccCheckDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: testAccVirtualNetworkConfigBasic,
@@ -87,22 +87,6 @@ func TestAccVirtualNetwork(t *testing.T) {
 			},
 		},
 	})
-}
-
-func testAccCheckVirtualNetworkDestroy(s *terraform.State) error {
-	controller := testAccProvider.Meta().(*goca.Controller)
-
-	for _, rs := range s.RootModule().Resources {
-		vnID, _ := strconv.ParseUint(rs.Primary.ID, 10, 64)
-		vnc := controller.VirtualNetwork(int(vnID))
-		// Get Virtual Network Info
-		vn, _ := vnc.Info()
-		if vn != nil {
-			return fmt.Errorf("Expected virtual network %s to have been destroyed", rs.Primary.ID)
-		}
-	}
-
-	return nil
 }
 
 func testAccCheckVirtualNetworkARnumber(expectedARs int) resource.TestCheckFunc {

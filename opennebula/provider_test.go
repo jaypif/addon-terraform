@@ -1,10 +1,14 @@
 package opennebula
 
 import (
+	"fmt"
 	"github.com/hashicorp/terraform/helper/schema"
 	"github.com/hashicorp/terraform/terraform"
 	"os"
+	"strconv"
 	"testing"
+
+	"github.com/OpenNebula/one/src/oca/go/src/goca"
 )
 
 func TestProvider(t *testing.T) {
@@ -37,4 +41,46 @@ func testEnvIsSet(k string, t *testing.T) {
 	if v := os.Getenv(k); v == "" {
 		t.Fatalf("%s must be set for acceptance tests", k)
 	}
+}
+
+func testAccCheckDestroy(s *terraform.State) error {
+	controller := testAccProvider.Meta().(*goca.Controller)
+
+	for _, rs := range s.RootModule().Resources {
+		ID, _ := strconv.ParseUint(rs.Primary.ID, 10, 64)
+		if rs.Type == "opennebula_image" {
+			ic := controller.Image(int(ID))
+			// Get Image Info
+			image, _ := ic.Info()
+			if image != nil {
+				return fmt.Errorf("Expected image %s to have been destroyed", rs.Primary.ID)
+			}
+		}
+		if rs.Type == "opennebula_group" {
+			gc := controller.Group(int(ID))
+			// Get Group Info
+			group, _ := gc.Info()
+			if group != nil {
+				return fmt.Errorf("Expected group %s to have been destroyed", rs.Primary.ID)
+			}
+		}
+		if rs.Type == "opennebula_security_group" {
+			sgc := controller.SecurityGroup(int(ID))
+			// Get Security Group Info
+			sg, _ := sgc.Info()
+			if sg != nil {
+				return fmt.Errorf("Expected security group %s to have been destroyed", rs.Primary.ID)
+			}
+		}
+		if rs.Type == "opennebula_virtual_network" {
+			vnc := controller.VirtualNetwork(int(ID))
+			// Get Virtual Network Info
+			vn, _ := vnc.Info()
+			if vn != nil {
+				return fmt.Errorf("Expected virtual network %s to have been destroyed", rs.Primary.ID)
+			}
+		}
+	}
+
+	return nil
 }

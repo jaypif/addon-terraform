@@ -16,10 +16,10 @@ func TestAccImage(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
 		Providers:    testAccProviders,
-		CheckDestroy: testAccCheckImageDestroy,
+		CheckDestroy: testAccCheckDestroy,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccImageConfigDatablockBasic,
+				Config: testAccImageConfigBasic,
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("opennebula_image.testimage", "name", "test-image-datablock"),
 					resource.TestCheckResourceAttr("opennebula_image.testimage", "datastore_id", "1"),
@@ -29,6 +29,7 @@ func TestAccImage(t *testing.T) {
 					resource.TestCheckResourceAttr("opennebula_image.testimage", "dev_prefix", "vd"),
 					resource.TestCheckResourceAttr("opennebula_image.testimage", "driver", "qcow2"),
 					resource.TestCheckResourceAttr("opennebula_image.testimage", "permissions", "742"),
+					resource.TestCheckResourceAttr("opennebula_image.testimage", "group", "oneadmin"),
 					resource.TestCheckResourceAttrSet("opennebula_image.testimage", "uid"),
 					resource.TestCheckResourceAttrSet("opennebula_image.testimage", "gid"),
 					resource.TestCheckResourceAttrSet("opennebula_image.testimage", "uname"),
@@ -43,16 +44,18 @@ func TestAccImage(t *testing.T) {
 				),
 			},
 			{
-				Config: testAccImageConfigDatablockUpdate,
+				Config:  testAccImageConfigUpdate,
+				Destroy: false,
 				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr("opennebula_image.testimage", "name", "test-image-datablock"),
+					resource.TestCheckResourceAttr("opennebula_image.testimage", "name", "test-image-datablock-renamed"),
 					resource.TestCheckResourceAttr("opennebula_image.testimage", "datastore_id", "1"),
 					resource.TestCheckResourceAttr("opennebula_image.testimage", "persistent", "false"),
-					resource.TestCheckResourceAttr("opennebula_image.testimage", "type", "DATABLOCK"),
+					resource.TestCheckResourceAttr("opennebula_image.testimage", "type", "OS"),
 					resource.TestCheckResourceAttr("opennebula_image.testimage", "size", "128"),
 					resource.TestCheckResourceAttr("opennebula_image.testimage", "dev_prefix", "vd"),
 					resource.TestCheckResourceAttr("opennebula_image.testimage", "driver", "qcow2"),
 					resource.TestCheckResourceAttr("opennebula_image.testimage", "permissions", "660"),
+					resource.TestCheckResourceAttr("opennebula_image.testimage", "group", "oneadmin"),
 					resource.TestCheckResourceAttrSet("opennebula_image.testimage", "uid"),
 					resource.TestCheckResourceAttrSet("opennebula_image.testimage", "gid"),
 					resource.TestCheckResourceAttrSet("opennebula_image.testimage", "uname"),
@@ -63,30 +66,33 @@ func TestAccImage(t *testing.T) {
 						OwnerA: 0,
 						GroupU: 1,
 						GroupM: 1,
-					}, "test-image-datablock"),
+					}, "test-image-datablock-renamed"),
+				),
+			},
+			{
+				Config:  testAccImageConfigClone,
+				Destroy: false,
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("opennebula_image.clone", "name", "test-image-clone"),
+					resource.TestCheckResourceAttr("opennebula_image.clone", "datastore_id", "1"),
+					resource.TestCheckResourceAttr("opennebula_image.clone", "dev_prefix", "vd"),
+					resource.TestCheckResourceAttr("opennebula_image.clone", "permissions", "660"),
+					resource.TestCheckResourceAttr("opennebula_image.clone", "group", "iamgroup"),
+					resource.TestCheckResourceAttrSet("opennebula_image.clone", "uid"),
+					resource.TestCheckResourceAttrSet("opennebula_image.clone", "gid"),
+					resource.TestCheckResourceAttrSet("opennebula_image.clone", "uname"),
+					resource.TestCheckResourceAttrSet("opennebula_image.clone", "gname"),
+					testAccCheckImagePermissions(&shared.Permissions{
+						OwnerU: 1,
+						OwnerM: 1,
+						OwnerA: 0,
+						GroupU: 1,
+						GroupM: 1,
+					}, "test-image-clone"),
 				),
 			},
 		},
 	})
-}
-
-func testAccCheckImageDestroy(s *terraform.State) error {
-	controller := testAccProvider.Meta().(*goca.Controller)
-
-	for _, rs := range s.RootModule().Resources {
-		imageID, _ := strconv.ParseUint(rs.Primary.ID, 10, 64)
-		ic := controller.Image(int(imageID))
-		// Get Image Info
-		image, _ := ic.Info()
-		if image != nil {
-			// Do not try to destroy image to be cloned
-			if image.ID != 11 {
-				return fmt.Errorf("Expected image %s to have been destroyed", rs.Primary.ID)
-			}
-		}
-	}
-
-	return nil
 }
 
 func testAccCheckImagePermissions(expected *shared.Permissions, resourcename string) resource.TestCheckFunc {
@@ -94,6 +100,9 @@ func testAccCheckImagePermissions(expected *shared.Permissions, resourcename str
 		controller := testAccProvider.Meta().(*goca.Controller)
 
 		for _, rs := range s.RootModule().Resources {
+			if rs.Type != "opennebula_image" {
+				continue
+			}
 			imageID, _ := strconv.ParseUint(rs.Primary.ID, 10, 64)
 			ic := controller.Image(int(imageID))
 			// Get image Info
@@ -119,7 +128,7 @@ func testAccCheckImagePermissions(expected *shared.Permissions, resourcename str
 	}
 }
 
-var testAccImageConfigDatablockBasic = `
+var testAccImageConfigBasic = `
 resource "opennebula_image" "testimage" {
    name = "test-image-datablock"
    description = "Terraform datablock"
@@ -130,19 +139,65 @@ resource "opennebula_image" "testimage" {
    dev_prefix = "vd"
    permissions = "742"
    driver = "qcow2"
+   group = "oneadmin"
 }
 `
 
-var testAccImageConfigDatablockUpdate = `
+var testAccImageConfigUpdate = `
 resource "opennebula_image" "testimage" {
-   name = "test-image-datablock"
+   name = "test-image-datablock-renamed"
    description = "Terraform datablock"
    datastore_id = 1
    persistent = false
-   type = "DATABLOCK"
+   type = "OS"
    size = "128"
    dev_prefix = "vd"
-   permissions = 660
+   permissions = "660"
    driver = "qcow2"
+   group = "oneadmin"
+}
+`
+var testAccImageConfigClone = `
+resource "opennebula_group" "group" {
+  name = "iamgroup"
+  template = <<EOF
+    SUNSTONE = [
+      DEFAULT_VIEW = "cloud",
+      GROUP_ADMIN_DEFAULT_VIEW = "groupadmin",
+      GROUP_ADMIN_VIEWS = "groupadmin",
+      VIEWS = "cloud"
+    ]
+    EOF
+    delete_on_destruction = true
+    quotas {
+        vm {
+            cpu = 4
+            memory = 8192
+        }
+    }
+}
+
+resource "opennebula_image" "testimage" {
+   name = "test-image-datablock-renamed"
+   description = "Terraform datablock"
+   datastore_id = 1
+   persistent = false
+   type = "OS"
+   size = "128"
+   dev_prefix = "vd"
+   permissions = "660"
+   driver = "qcow2"
+   group = "oneadmin"
+}
+
+resource "opennebula_image" "clone" {
+   name = "test-image-clone"
+   description = "Terraform clone"
+   clone_from_image = opennebula_image.testimage.id
+   datastore_id = 1
+   persistent = false
+   dev_prefix = "vd"
+   permissions = "660"
+   group = "iamgroup"
 }
 `
