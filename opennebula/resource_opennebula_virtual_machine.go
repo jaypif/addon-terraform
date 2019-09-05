@@ -2,13 +2,11 @@ package opennebula
 
 import (
 	"bytes"
-	"encoding/xml"
 	"fmt"
 	"github.com/fatih/structs"
 	"github.com/hashicorp/terraform/helper/hashcode"
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/helper/schema"
-	"io"
 	"log"
 	"strconv"
 	"strings"
@@ -17,99 +15,6 @@ import (
 	"github.com/OpenNebula/one/src/oca/go/src/goca"
 	"github.com/OpenNebula/one/src/oca/go/src/goca/schemas/vm"
 )
-
-type vmTemplate struct {
-	CPU                float64                `xml:"CPU, omitempty"`
-	VCPU               int                    `xml:"VCPU,omitempty"`
-	Memory             int                    `xml:"MEMORY, omitempty"`
-	NICs               []vmNIC                `xml:"NIC"`
-	NICAliases         []vm.NicAlias          `xml:"NIC_ALIAS"`
-	Context            stringMap              `xml:"CONTEXT"`
-	Disks              []vmDisk               `xml:"DISK"`
-	Graphics           *vmGraphics            `xml:"GRAPHICS"`
-	OS                 *vm.OS                 `xml:"OS"`
-	Snapshots          []vm.Snapshot          `xml:"SNAPSHOT"`
-	SecurityGroupRules []vm.SecurityGroupRule `xml:"SECURITY_GROUP_RULE"`
-}
-
-type vmNIC struct {
-	ID              int    `xml:"NIC_ID,omitempty"`
-	IP              string `xml:"IP,omitempty"`
-	Model           string `xml:"MODEL,omitempty"`
-	MAC             string `xml:"MAC,omitempty"`
-	Network_ID      int    `xml:"NETWORK_ID"`
-	PhyDev          string `xml:"PHYDEV"`
-	Network         string `xml:"NETWORK"`
-	Security_Groups string `xml:"SECURITY_GROUPS,omitempty"`
-}
-
-type vmDisk struct {
-	ID       string `xml:"DISK_ID,omitempty"`
-	Image_ID int    `xml:"IMAGE_ID"`
-	Image    string `xml:"IMAGE"`
-	Size     int    `xml:"SIZE,omitempty"`
-	Target   string `xml:"TARGET,omitempty"`
-	Driver   string `xml:"DRIVER,omitempty"`
-}
-
-type vmGraphics struct {
-	Keymap string `xml:"KEYMAP,omitempty"`
-	Listen string `xml:"LISTEN,omitempty"`
-	Port   string `xml:"PORT"`
-	Type   string `xml:"TYPE,omitempty"`
-}
-
-//This type and the MarshalXML functions are needed to handle converting the CONTEXT map to xml and back
-//From: https://stackoverflow.com/questions/30928770/marshall-map-to-xml-in-go/33110881
-type stringMap map[string]string
-type xmlMapEntry struct {
-	XMLName xml.Name
-	Value   string `xml:",chardata"`
-}
-
-// MarshalXML marshals the map to XML, with each key in the map being a
-// tag and it's corresponding value being it's contents.
-func (m stringMap) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
-	if len(m) == 0 {
-		return nil
-	}
-
-	err := e.EncodeToken(start)
-	if err != nil {
-		return err
-	}
-
-	for k, v := range m {
-		e.Encode(xmlMapEntry{XMLName: xml.Name{Local: k}, Value: v})
-	}
-
-	return e.EncodeToken(start.End())
-}
-
-// UnmarshalXML unmarshals the XML into a map of string to strings,
-// creating a key in the map for each tag and setting it's value to the
-// tags contents.
-//
-// The fact this function is on the pointer of Map is important, so that
-// if m is nil it can be initialized, which is often the case if m is
-// nested in another xml structurel. This is also why the first thing done
-// on the first line is initialize it.
-func (m *stringMap) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
-	*m = stringMap{}
-	for {
-		var e xmlMapEntry
-
-		err := d.Decode(&e)
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return err
-		}
-
-		(*m)[e.XMLName.Local] = e.Value
-	}
-	return nil
-}
 
 func resourceOpennebulaVirtualMachine() *schema.Resource {
 	return &schema.Resource{
@@ -727,145 +632,202 @@ func generateVmXML(d *schema.ResourceData) (string, error) {
 	log.Printf("Number of CONTEXT vars: %d", len(context))
 	log.Printf("CONTEXT Map: %s", context)
 
-	vmcontext := make(stringMap)
+	vmcontext := "CONTEXT = [\n"
+    conlen := len(context)
 	for key, value := range context {
 		//contextvar = v.(map[string]interface{})
-		vmcontext[key] = fmt.Sprint(value)
+        if conlen == 1 {
+    		vmcontext = fmt.Sprintf("%s%s = %s\n", vmcontext, key, value)
+        } else {
+    		vmcontext = fmt.Sprintf("%s%s = %s,\n", vmcontext, key, value)
+        }
+        conlen--
 	}
+	vmcontext = fmt.Sprintf("%s]", vmcontext)
 
 	//Generate NIC definition
 	nics := d.Get("nic").(*schema.Set).List()
 	log.Printf("Number of NICs: %d", len(nics))
-	vmnics := make([]vmNIC, len(nics))
+	var vmnics string
 	for i := 0; i < len(nics); i++ {
 		nicconfig := nics[i].(map[string]interface{})
 		nicip := nicconfig["ip"].(string)
 		nicmac := nicconfig["mac"].(string)
 		nicmodel := nicconfig["model"].(string)
+		nicsecgroups := ArrayToString(nicconfig["security_groups"].([]interface{}), ",")
 		nicphydev := nicconfig["physical_device"].(string)
 		nicnetworkid := nicconfig["network_id"].(int)
-		nicsecgroups := ArrayToString(nicconfig["security_groups"].([]interface{}), ",")
-
-		vmnic := vmNIC{
-			IP:              nicip,
-			MAC:             nicmac,
-			Model:           nicmodel,
-			PhyDev:          nicphydev,
-			Network_ID:      nicnetworkid,
-			Security_Groups: nicsecgroups,
-		}
-		vmnics[i] = vmnic
+		vmnics = fmt.Sprintf("%s\nNIC = [\n" +
+							"NETWORK_ID = %d",
+							vmnics,
+							nicnetworkid)
+        if nicphydev != "" {
+		    vmnics = fmt.Sprintf("%s,PHYDEV = %s", vmnics, nicphydev)
+        }
+		if nicip != "" {
+		    vmnics = fmt.Sprintf("%s,\nIP = %s", vmnics, nicip)
+        }
+		if nicmac != "" {
+		    vmnics = fmt.Sprintf("%s,\nMAC = %s", vmnics, nicmac)
+        }
+		if nicmodel != "" {
+		    vmnics = fmt.Sprintf("%s,\nMODEL = %s", vmnics, nicmodel)
+        }
+        if nicsecgroups != "" {
+		    vmnics = fmt.Sprintf("%s,\nSECURITY_GROUPS = %s", vmnics, nicsecgroups)
+        }
+		vmnics = fmt.Sprintf("%s]", vmnics)
 	}
 
 	//Generate DISK definition
 	disks := d.Get("disk").(*schema.Set).List()
 	log.Printf("Number of disks: %d", len(disks))
-	vmdisks := make([]vmDisk, len(disks))
+	vmdisks := ""
 	for i := 0; i < len(disks); i++ {
 		diskconfig := disks[i].(map[string]interface{})
-		diskimageid := diskconfig["image_id"].(int)
+		diskimage := diskconfig["image_id"].(int)
 		disksize := diskconfig["size"].(int)
 		disktarget := diskconfig["target"].(string)
 		diskdriver := diskconfig["driver"].(string)
-
-		vmdisk := vmDisk{
-			Image_ID: diskimageid,
-			Size:     disksize,
-			Target:   disktarget,
-			Driver:   diskdriver,
-		}
-		vmdisks[i] = vmdisk
+		vmdisks = fmt.Sprintf("%s\nDISK = [\n", vmdisks)
+		if disksize > 0 {
+		    vmdisks = fmt.Sprintf("%sSIZE = %d,\n", vmdisks, disksize)
+        }
+		if disktarget != "" {
+		    vmdisks = fmt.Sprintf("%sTARGET = %s,\n", vmdisks, disktarget)
+        }
+		if diskdriver != "" {
+		    vmdisks = fmt.Sprintf("%sDRIVER = %s,\n", vmdisks, diskdriver)
+        }
+        vmdisks = fmt.Sprintf("%sIMAGE_ID = %d]", vmdisks, diskimage)
 	}
 
 	//Generate GRAPHICS definition
-	var vmgraphics vmGraphics
+	var vmgraphics string
 	if g, ok := d.GetOk("graphics"); ok {
 		graphics := g.(*schema.Set).List()
 		graphicsconfig := graphics[0].(map[string]interface{})
-		gfxlisten := graphicsconfig["listen"].(string)
-		gfxtype := graphicsconfig["type"].(string)
-		gfxport := graphicsconfig["port"].(string)
-		gfxkeymap := graphicsconfig["keymap"].(string)
-		vmgraphics = vmGraphics{
-			Listen: gfxlisten,
-			Port:   gfxport,
-			Type:   gfxtype,
-			Keymap: gfxkeymap,
-		}
+        conflen := len(graphicsconfig)
+		listen := graphicsconfig["listen"].(string)
+		gtype := graphicsconfig["type"].(string)
+        port :=	graphicsconfig["port"].(string)
+		keymap := graphicsconfig["keymap"].(string)
+
+		vmgraphics = "GRAPHICS = ["
+        if listen != "" {
+            if conflen == 1 {
+                vmgraphics = fmt.Sprintf("%s\nLISTEN = %s\n", vmgraphics, listen)
+            } else {
+                vmgraphics = fmt.Sprintf("%s\nLISTEN = %s,\n", vmgraphics, listen)
+            }
+            conflen--
+        }
+        if gtype != "" {
+            if conflen == 1 {
+                vmgraphics = fmt.Sprintf("%sTYPE = %s\n", vmgraphics, gtype)
+            } else {
+                vmgraphics = fmt.Sprintf("%sTYPE = %s,\n", vmgraphics, gtype)
+            }
+            conflen--
+        }
+        if port != "" {
+            if conflen == 1 {
+                vmgraphics = fmt.Sprintf("%sPORT = %s\n", vmgraphics, port)
+            } else {
+                vmgraphics = fmt.Sprintf("%sPORT = %s,\n", vmgraphics, port)
+            }
+            conflen--
+        }
+        if keymap != "" {
+            vmgraphics = fmt.Sprintf("%sKEYMAP = %s\n", vmgraphics, keymap)
+        }
+        vmgraphics = fmt.Sprintf("%s]", vmgraphics)
 	}
 
 	//Generate OS definition
-	var vmos vm.OS
+	var vmos string
 	if o, ok := d.GetOk("os"); ok {
 		os := o.(*schema.Set).List()
 		osconfig := os[0].(map[string]interface{})
-		osarch := osconfig["arch"].(string)
-		osboot := osconfig["boot"].(string)
-		vmos = vm.OS{
-			Arch: osarch,
-			Boot: osboot,
-		}
+        arch := osconfig["arch"].(string)
+        boot := osconfig["boot"].(string)
+		vmos = "OS = [\n"
+        if arch != "" {
+            vmos = fmt.Sprintf("%sARCH = %s,\n", vmos, arch)
+        }
+        vmos = fmt.Sprintf("%sBOOT = \"%s\"]", vmos, boot)
 	}
 
 	//Pull all the bits together into the main VM template
 	var vmvcpu interface{}
 	var vmcpu interface{}
 	var vmmemory interface{}
-	var vmtpl *vmTemplate
+	vmtpl := ""
 	var ok bool
 	if vmcpu, ok = d.GetOk("cpu"); ok {
 		if vmmemory, ok = d.GetOk("memory"); ok {
 			if vmvcpu, ok = d.GetOk("vcpu"); ok {
-				vmtpl = &vmTemplate{
-					VCPU:     vmvcpu.(int),
-					CPU:      vmcpu.(float64),
-					Memory:   vmmemory.(int),
-					Context:  vmcontext,
-					NICs:     vmnics,
-					Disks:    vmdisks,
-					Graphics: &vmgraphics,
-					OS:       &vmos,
-				}
+				vmtpl = fmt.Sprintf("VCPU = %d\n"+
+					"CPU = %f\n"+
+					"MEMORY = %d\n"+
+                    "%s\n"+
+					"%s\n"+
+					"%s\n"+
+					"%s\n"+
+					"%s",
+					vmvcpu.(int),
+					vmcpu.(float64),
+					vmmemory.(int),
+                    vmcontext,
+                    vmos,
+                    vmgraphics,
+					vmnics,
+					vmdisks)
+			} else {
+				vmtpl = fmt.Sprintf("CPU = %f\n"+
+					"MEMORY = %d\n"+
+					"%s\n"+
+					"%s\n"+
+					"%s\n"+
+					"%s\n"+
+					"%s",
+					vmcpu.(float64),
+					vmmemory.(int),
+                    vmcontext,
+                    vmos,
+                    vmgraphics,
+					vmnics,
+					vmdisks)
 			}
-			vmtpl = &vmTemplate{
-				CPU:      vmcpu.(float64),
-				Memory:   vmmemory.(int),
-				Context:  vmcontext,
-				NICs:     vmnics,
-				Disks:    vmdisks,
-				Graphics: &vmgraphics,
-				OS:       &vmos,
-			}
-		}
-		vmtpl = &vmTemplate{
-			CPU:      vmcpu.(float64),
-			Context:  vmcontext,
-			NICs:     vmnics,
-			Disks:    vmdisks,
-			Graphics: &vmgraphics,
-			OS:       &vmos,
+		} else {
+			vmtpl = fmt.Sprintf("CPU = %f\n"+
+				"%s\n"+
+				"%s\n"+
+				"%s\n"+
+				"%s\n"+
+				"%s",
+				vmcpu.(float64),
+                vmcontext,
+                vmos,
+                vmgraphics,
+				vmnics,
+				vmdisks)
 		}
 	} else {
-		vmtpl = &vmTemplate{
-			Context:  vmcontext,
-			NICs:     vmnics,
-			Disks:    vmdisks,
-			Graphics: &vmgraphics,
-			OS:       &vmos,
-		}
+		vmtpl = fmt.Sprintf("%s\n"+
+			"%s\n"+
+			"%s\n"+
+			"%s\n"+
+			"%s",
+			vmnics,
+            vmos,
+            vmgraphics,
+            vmcontext,
+			vmdisks)
 	}
 
-	w := &bytes.Buffer{}
-
-	//Encode the VM template schema to XML
-	enc := xml.NewEncoder(w)
-	//enc.Indent("", "  ")
-	if err := enc.Encode(vmtpl); err != nil {
-		return "", err
-	}
-
-	log.Printf("VM XML: %s", w.String())
-	return w.String(), nil
+	log.Printf("VM XML: %s", vmtpl)
+	return vmtpl, nil
 
 }
 
