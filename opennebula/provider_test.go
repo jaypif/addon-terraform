@@ -80,6 +80,22 @@ func testAccCheckDestroy(s *terraform.State) error {
 				return fmt.Errorf("Expected virtual network %s to have been destroyed", rs.Primary.ID)
 			}
 		}
+		if rs.Type == "opennebula_virtual_machine" {
+			vmc := controller.VM(int(ID))
+			// Get Virtual Machine Info
+			vm, err := vmc.Info()
+			if err != nil {
+				return err
+			}
+			// When a VM is destroyed, it is in "DONE" state
+			vmState, _, err := vm.StateString()
+			if err != nil {
+				return err
+			}
+			if vmState != "DONE" {
+				return fmt.Errorf("Expected virtual machine %s to have been destroyed, current state is: %s", rs.Primary.ID, vmState)
+			}
+		}
 	}
 
 	return nil
