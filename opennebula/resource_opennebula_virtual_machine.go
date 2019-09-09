@@ -639,9 +639,13 @@ func resourceOpennebulaVirtualMachineUpdate(d *schema.ResourceData, meta interfa
 }
 
 func resourceOpennebulaVirtualMachineDelete(d *schema.ResourceData, meta interface{}) error {
-	err := resourceOpennebulaVirtualMachineRead(d, meta)
-	if err != nil || d.Id() == "" {
+	b, err := resourceOpennebulaVirtualMachineExists(d, meta)
+	if err != nil {
 		return err
+	}
+	if !b {
+		// VM already deleted
+		return nil
 	}
 
 	//Get VM
@@ -679,19 +683,17 @@ func waitForVmState(d *schema.ResourceData, meta interface{}, state string) (int
 		Pending: []string{"anythingelse"}, Target: []string{state},
 		Refresh: func() (interface{}, string, error) {
 			log.Println("Refreshing VM state...")
-			if d.Id() != "" {
-				//Get VM controller
-				vmc, err = getVirtualMachineController(d, meta)
-				if err != nil {
-					return vm, "", fmt.Errorf("Could not find VM by ID %s", d.Id())
-				}
+			//Get VM controller
+			vmc, err = getVirtualMachineController(d, meta)
+			if err != nil {
+				return vm, "", fmt.Errorf("Could not find VM by ID %s", d.Id())
 			}
 			vm, err = vmc.Info()
 			if err != nil {
 				if strings.Contains(err.Error(), "Error getting") {
 					return vm, "notfound", nil
 				}
-				return vm, "", err
+				return vm, "error getting info", err
 			}
 			vmState, vmLcmState, err := vm.State()
 			if err != nil {
@@ -711,7 +713,7 @@ func waitForVmState(d *schema.ResourceData, meta interface{}, state string) (int
 				return vm, "anythingelse", nil
 			}
 		},
-		Timeout:    10 * time.Minute,
+		Timeout:    3 * time.Minute,
 		Delay:      10 * time.Second,
 		MinTimeout: 3 * time.Second,
 	}
